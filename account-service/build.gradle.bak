@@ -1,0 +1,60 @@
+/*
+ * Bank Account Service Gradle Build File
+ * This is the main build file that applies modular Gradle scripts
+ */
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.4'
+    id 'io.spring.dependency-management' version '1.1.5'
+    id 'com.autonomousapps.dependency-analysis' version '1.30.0'
+    id 'checkstyle'
+    id 'com.github.spotbugs' version '5.0.14'
+    id 'jacoco'
+}
+
+// SpotBugs configuration directly in main build file
+spotbugs {
+    ignoreFailures = true
+    toolVersion = '4.7.3'
+    showProgress = true
+}
+
+// Custom task configuration for SpotBugs (without enum constants)
+tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach { task ->
+    task.effort = 'max'
+    task.reportLevel = 'medium'
+    task.reports {
+        xml.required = false
+        html.required = true
+    }
+}
+
+// Apply all modular build scripts
+apply from: "gradle/scripts/properties.gradle"
+apply from: "gradle/scripts/quality.gradle"
+apply from: "gradle/scripts/dependencies.gradle"
+apply from: "gradle/scripts/testing.gradle"
+
+// CI Tests task - explicitly run only unit tests, excluding integration tests
+task ciTests {
+    description = 'Run unit tests only, skipping integration tests for CI pipelines'
+    group = 'verification'
+    
+    // Depends on test task, with configuration to exclude integration tests
+    dependsOn test
+}
+
+// Set CI mode when running ciTests task
+tasks.named('ciTests') { task ->
+    task.doFirst {
+        System.setProperty('ci', 'true')
+    }
+}
+
+tasks.withType(JavaCompile).configureEach { task ->
+    task.options.compilerArgs = [
+            '-Amapstruct.defaultComponentModel=spring',
+            '-parameters'
+    ]
+}

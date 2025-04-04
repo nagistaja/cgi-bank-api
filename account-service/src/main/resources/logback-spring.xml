@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Include Spring Boot's default configuration -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- Get application name from Spring properties -->
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"/>
+    
+    <!-- Console appender with JSON format -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdc>true</includeMdc>
+            <includeContext>true</includeContext>
+            <timeZone>UTC</timeZone>
+            <customFields>{"app_name":"${APP_NAME:-account-service}","env":"${ENV:-local}"}</customFields>
+        </encoder>
+    </appender>
+    
+    <!-- Plain text console appender (useful for development) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %cyan(%logger{36}) [%X{traceId:-}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <!-- Set specific logger levels -->
+    <logger name="com.cgi.bank.account" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </logger>
+    
+    <logger name="org.springframework.web" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </logger>
+    
+    <logger name="org.hibernate.SQL" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </logger>
+    
+    <!-- Root logger configuration -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE_JSON"/>
+        <!-- Use this instead for plain text logs during development -->
+        <!-- <appender-ref ref="CONSOLE"/> -->
+    </root>
+    
+    <!-- Profile-specific configurations -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <!-- Use plain text format for development -->
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="com.cgi.bank.account" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+    </springProfile>
+    
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_JSON"/>
+        </root>
+        <logger name="com.cgi.bank.account" level="INFO" additivity="false">
+            <appender-ref ref="CONSOLE_JSON"/>
+        </logger>
+    </springProfile>
+</configuration> 

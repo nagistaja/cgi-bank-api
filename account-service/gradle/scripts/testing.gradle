@@ -1,0 +1,290 @@
+/**
+ * Gradle Testing Configuration
+ * This file configures the project's testing setup
+ */
+
+// Test source sets
+sourceSets {
+	integrationTest {
+		java {
+			srcDir file('src/test/java')
+		}
+		resources.srcDir file('src/test/resources')
+		
+		compileClasspath += main.output + test.output
+		runtimeClasspath += main.output + test.output
+	}
+}
+
+// Configure integration test configurations after sourceSets are created
+configurations {
+	integrationTestImplementation {
+		extendsFrom(configurations.testImplementation)
+	}
+	integrationTestRuntimeOnly {
+		extendsFrom(configurations.testRuntimeOnly)
+	}
+}
+
+// Configure a common function to standardize test settings
+def configureTestTask(task) {
+	task.useJUnitPlatform()
+	task.minHeapSize = "512m"
+	task.maxHeapSize = "1g"
+	
+	// Configure test logging
+	task.testLogging {
+		events "passed", "skipped", "failed"
+		exceptionFormat = "full" // Fixed assignment syntax
+		showStandardStreams = false
+	}
+	
+	task.systemProperties = [
+		'spring.profiles.active': 'test'
+	]
+}
+
+// Regular unit tests (fast, no DB)
+test {
+	configureTestTask(it)
+	
+	// Always clean the test output directory before running tests
+	outputs.upToDateWhen { false }
+	
+	// Filter to only run tests that do not have Integration in the name
+	// or excluding tests with @Tag("integration")
+	filter {
+		includeTestsMatching "*Test"
+		excludeTestsMatching "*IntegrationTest"
+	}
+	
+	useJUnitPlatform {
+		excludeTags 'integration'
+	}
+	
+	systemProperties = [
+		'spring.profiles.active': 'test-unit'
+	]
+	
+	// Clear any stale state
+	doFirst {
+		delete file("${buildDir}/test-results/test")
+	}
+}
+
+// Integration tests task with PostgreSQL
+task integrationTest(type: Test) {
+	configureTestTask(it)
+	
+	// Always clean the test output directory before running
+	outputs.upToDateWhen { false }
+	
+	description = 'Runs integration tests with TestContainers'
+	group = 'verification'
+	
+	// Use separate test task for integration tests
+	testClassesDirs = sourceSets.integrationTest.output.classesDirs
+	classpath = sourceSets.integrationTest.runtimeClasspath
+	
+	// Only run tests that have Integration in the name or @Tag("integration")
+	filter {
+		includeTestsMatching "*IntegrationTest"
+	}
+	
+	useJUnitPlatform {
+		includeTags 'integration'
+	}
+	
+	// Configure memory settings
+	minHeapSize = "1g"
+	maxHeapSize = "2g"
+	
+	// Configure test properties
+	systemProperties = [
+		'spring.profiles.active': 'test',
+		'spring.jpa.open-in-view': 'false',
+		'spring.transaction.rollback-on-commit-failure': 'true',
+		'spring.jpa.properties.hibernate.connection.isolation': '2', // READ_COMMITTED 
+		'spring.datasource.hikari.transaction-isolation': 'TRANSACTION_READ_COMMITTED',
+		'spring.jpa.properties.hibernate.jdbc.batch_size': '50',
+		'spring.test.database.replace': 'any',
+		'spring.flyway.enabled': 'true',
+		'spring.datasource.hikari.auto-commit': 'false',
+		'spring.test.database.reset': 'before-each-test-method',
+		'hibernate.connection.provider_disables_autocommit': 'true',
+		'spring.jpa.properties.hibernate.dialect': 'org.hibernate.dialect.PostgreSQLDialect',
+		'spring.transaction.default-timeout': '30'
+	]
+	
+	// Make sure unit tests run first
+	shouldRunAfter test
+	
+	// Run tests sequentially
+	maxParallelForks = 8
+	forkEvery = 12
+	
+	// Clear any stale state
+	doFirst {
+		delete file("${buildDir}/test-results/integrationTest")
+	}
+	
+	enabled = true
+}
+
+// Test task dependencies
+integrationTest.shouldRunAfter test
+
+// Add tests to check lifecycle
+check.dependsOn test
+
+tasks.named('test') { task ->
+	task.useJUnitPlatform()
+}
+
+jacoco {
+	toolVersion = "0.8.11"
+}
+
+// Define common JaCoCo class exclusions
+def getJacocoExclusions() {
+    return [
+        "com/cgi/bank/account/config/**",
+        "**/Application.*",
+        "com/cgi/bank/account/integration/**",
+        "com/cgi/bank/account/exception/**",
+        "com/cgi/bank/account/controller/dto/**",
+        "**/*MapperImpl.*"
+    ]
+}
+
+// Unit test coverage report configuration
+jacocoTestReport {
+	reports {
+		xml.required = true
+		html.required = true
+	}
+}
+
+// Define threshold rules for unit tests
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            element = 'CLASS'
+            includes = ['com.cgi.bank.account.domain.*', 'com.cgi.bank.account.service.mapper.TransactionMapper'] 
+
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.80
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = 0.70
+            }
+        }
+    }
+    
+    // Exclusions configuration is inherited from the global configuration above
+}
+
+// Apply exclusions for all JaCoCo tasks when the project is evaluated
+project.afterEvaluate {
+    tasks.withType(JacocoReport).configureEach { task ->
+        task.classDirectories.setFrom(files(task.classDirectories.files.collect {
+            fileTree(dir: it, exclude: getJacocoExclusions())
+        }))
+    }
+    
+    tasks.withType(JacocoCoverageVerification).configureEach { task ->
+        task.classDirectories.setFrom(files(task.classDirectories.files.collect {
+            fileTree(dir: it, exclude: getJacocoExclusions() + ["com/cgi/bank/account/controller/**"])
+        }))
+    }
+}
+
+// Integration test coverage report configuration
+task jacocoIntegrationTestReport(type: JacocoReport) {
+	reports {
+		xml.required = true
+		html.required = true
+		csv.required = false
+	}
+	
+	executionData integrationTest
+	
+	// Set a dedicated report directory for integration tests
+	// This avoids overwriting the unit test coverage report
+	reports {
+		html.outputLocation = file("${project.buildDir}/reports/jacoco-integration")
+	}
+}
+
+// Combined coverage report (unit + integration)
+task combinedJacocoReport(type: JacocoReport, dependsOn: [jacocoTestReport]) {
+	description = 'Combines coverage from unit and integration tests'
+	group = 'Verification'
+	
+	// Collect execution data from all tests
+	executionData fileTree(dir: "${project.buildDir}", includes: [
+		"jacoco/test.exec"
+	])
+	
+	// Set source and class directories
+	sourceSets sourceSets.main
+	
+	// Configure reports
+	reports {
+		xml.required = true
+		html.required = true
+		csv.required = false
+		
+		html.outputLocation = file("${project.buildDir}/reports/jacoco-combined")
+	}
+}
+
+// Combined coverage verification
+task combinedJacocoCoverageVerification(type: JacocoCoverageVerification, dependsOn: combinedJacocoReport) {
+    description = 'Verifies code coverage thresholds for combined unit and integration tests'
+    group = 'Verification'
+    
+    executionData combinedJacocoReport.executionData
+    
+    // Set source and class directories
+    sourceSets sourceSets.main
+    
+    // Define threshold rules for combined tests
+    violationRules {
+        rule {
+            element = 'CLASS'
+            includes = ['com.cgi.bank.account.domain.*'] 
+            // Focus on domain classes only for now
+
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.80
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = 0.70
+            }
+        }
+    }
+}
+
+// Add the reports and verifications to the check lifecycle
+check.dependsOn jacocoTestReport
+check.dependsOn jacocoTestCoverageVerification
+check.dependsOn combinedJacocoReport
+check.dependsOn combinedJacocoCoverageVerification
+
+// If not in CI environment
+if (!project.hasProperty('ci')) {
+	test {
+		useJUnitPlatform {
+			excludeTags 'integration'
+		}
+	}
+} 

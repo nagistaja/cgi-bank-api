@@ -1,0 +1,22 @@
+spring:
+  # Disable test-specific database configuration for unit tests
+  datasource:
+    # Use URL that will never be used
+    url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1
+    username: sa
+    password: sa
+    driver-class-name: org.h2.Driver
+    
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: create-drop
+    
+  # Disable Flyway for unit tests
+  flyway:
+    enabled: false
+
+  # Disable security for tests
+  security:
+    basic:
+      enabled: false 

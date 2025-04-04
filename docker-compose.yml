@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16
+    container_name: bank_db
+    environment:
+      POSTGRES_DB: accounts_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d accounts_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  account-service:
+    build:
+      context: ./account-service
+    container_name: bank_account_service
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/accounts_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: true
+      SPRING_FLYWAY_USER: $${SPRING_DATASOURCE_USERNAME}
+      SPRING_FLYWAY_PASSWORD: $${SPRING_DATASOURCE_PASSWORD}
+      SPRING_FLYWAY_URL: $${SPRING_DATASOURCE_URL}
+      APP_EXCHANGE_RATES_RATES_EUR_USD: 1.08
+      APP_EXCHANGE_RATES_RATES_USD_EUR: 0.92
+      APP_EXCHANGE_RATES_RATES_EUR_SEK: 11.22
+      APP_EXCHANGE_RATES_RATES_SEK_EUR: 0.089
+      APP_EXCHANGE_RATES_RATES_EUR_RUB: 102.45
+      APP_EXCHANGE_RATES_RATES_RUB_EUR: 0.0098
+      APP_EXCHANGE_RATES_RATES_USD_SEK: 10.37
+      APP_EXCHANGE_RATES_RATES_SEK_USD: 0.096
+      APP_EXCHANGE_RATES_RATES_USD_RUB: 94.82
+      APP_EXCHANGE_RATES_RATES_RUB_USD: 0.0105
+      APP_EXCHANGE_RATES_RATES_SEK_RUB: 9.13
+      APP_EXCHANGE_RATES_RATES_RUB_SEK: 0.109
+      APP_NOTIFICATION_URL: https://httpstat.us/
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
+    driver: local 
