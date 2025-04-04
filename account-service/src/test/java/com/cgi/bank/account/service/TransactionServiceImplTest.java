@@ -117,7 +117,6 @@ class TransactionServiceImplTest {
         @Test
         @DisplayName("Returns paginated transactions when account exists")
         void returnsPaginatedTransactionsWhenAccountExists() {
-            // Arrange
             int page = 0;
             int size = 10;
             Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "timestamp"));
